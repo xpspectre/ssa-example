@@ -90,8 +90,15 @@ legend('A','B','C','Location','best')
             % Update time
             t = t + tau;
             
-            % Pick reaction
+            % Pick reaction - rxn reaches equilibrium so always picks u = 1 or 2
             u = pick_rxn(a/ao);
+            
+            % Handle corner case of no rxns possible (i.e., depletion)
+            if isinf(t) || isempty(u)
+                ts(it) = tf;
+                xs(:,it) = x;
+                break
+            end
             
             % Update species
             switch u

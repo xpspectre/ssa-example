@@ -1,25 +1,27 @@
-function degradation_ssa
-% Even simpler 1st order degradation rxn
-% A -> 0
-% Good if you need a model w/ only 1 state so you don't have to worry about
-%   black-and-white printing
+function competition_ssa
+% Competition between 2 irreversible association reactions
+% A + A -> AA
+% A + B -> AB
+% Handles some corner cases in the ODE eqs and SSA implementation
 clear; close all; clc
 rng('default');
 
 % Rate constants
-k = 5;
+kAA = 5;
+kAB = 5;
 
-% Compartment volume - doesn't matter in this model
+% Compartment volume
 V = 1;
 
 % Initial conditions - counts
-%   Smaller for more stochasticity, larger for less
-%   Timescale will always be the same
-A0 = 50;
+A0 = 100;
+B0 = 50;
+AA0 = 0;
+AB0 = 0;
 
 % Set simulation conditions
-x0 = A0;
-tf = 1;
+x0 = [A0; B0; AA0; AB0];
+tf = 0.1;
 
 % Run ODE simulation
 [tOde, yOde] = ode15s(@ode_model, [0, tf], x0);
@@ -47,35 +49,37 @@ end
 hold off
 xlabel('Time')
 ylabel('Counts')
-title(sprintf('A -> 0\nODE = thick, SSA = thin lines'))
+title(sprintf('A + A -> AA, A + B -> AB\nODE = thick, SSA = thin lines'))
 xlim([0, tf])
-legend('A','Location','best')
+legend('A','B','AA','AB', 'Location','best')
 
-% Distribution of counts at times
-%   Linear interpolation at query times
-nRuns = 100;
-nt = 10;
-ts = linspace(0, tf, nt)';
-xs = zeros(nt,nRuns);
-% xMeans = zeros(nt,1);
-% xStds = zeros(nt,1);
-for i = 1:nRuns
-    [t, x] = ssa_sim(tf + 0.01, x0);
-    xs(:,i) = interp1(t, x, ts, 'nearest');
-end
+% Ensure mass balance is satisifed at all times
+AOde = yOde(:,1) + 2*yOde(:,3) + yOde(:,4);
+BOde = yOde(:,2) + yOde(:,4);
 
 figure
-errorbar(ts, mean(xs, 2), std(xs, 0, 2))
+plot(tOde, [AOde, BOde], 'LineWidth', 2)
+hold on
+ax = gca;
+for i = 1:nRuns
+    xSsa = xs{i};
+    ASsa = xSsa(:,1) + 2*xSsa(:,3) + xSsa(:,4);
+    BSsa = xSsa(:,2) + xSsa(:,4);
+    ax.ColorOrderIndex = 1;
+    stairs(ts{i}, [ASsa, BSsa], 'd') % using regular plot here is not as accurate
+end
+hold off
 xlabel('Time')
 ylabel('Counts')
-title(sprintf('A -> 0\nMean +/- StdDev Counts'))
+title(sprintf('A + A -> AA, A + B -> AB\nMass Balance Validation'))
 xlim([0, tf])
-ylim([0, A0])
+legend('A_{tot} ODE','B_{tot} ODE','A_{tot} SSA','B_{tot} SSA', 'Location','best')
+
 
     function [ts, xs] = ssa_sim(tf, x0)
         % Gillespie stochastic simulation algorithm
-        % States: x1 = A
-        % Rxns: a1 = degrade
+        % States: x1 = A, x2 = B, x3 = AA, x4 = AB
+        % Rxns: a1 = AA rxn, a2 = AB rxn
         nt = 1e3; % preallocate times to start with
         ts = zeros(1,nt);
         it = 1;
@@ -99,7 +103,9 @@ ylim([0, A0])
             end
             
             % Calculate reaction propensities and normalization
-            a = k*x(1);
+            a = zeros(1,2);
+            a(1) = kAA*x(1)*(x(1)-1)/V;
+            a(2) = kAB*x(1)*x(2)/V;
             ao = sum(a);
             
             % Calculate next reaction time
@@ -108,7 +114,7 @@ ylim([0, A0])
             % Update time
             t = t + tau;
             
-            % Pick reaction - degenerate: always selects u = 1
+            % Pick reaction
             u = pick_rxn(a/ao);
             
             % Handle corner case of no rxns possible (i.e., depletion)
@@ -120,8 +126,13 @@ ylim([0, A0])
             
             % Update species
             switch u
-                case 1 % A -> 0
+                case 1 % A + A -> AA
+                    x(1) = x(1) - 2;
+                    x(3) = x(3) + 1;
+                case 2 % A + B -> AB
                     x(1) = x(1) - 1;
+                    x(2) = x(2) - 1;
+                    x(4) = x(4) + 1;
             end
             
             % Store results
@@ -136,7 +147,11 @@ ylim([0, A0])
 
     function dx = ode_model(~, x)
         % ODE model for integrators
-        dx = -k*x;
+        dx1 = -2*kAA/V*x(1).^2 - kAB/V*x(1).*x(2); % A
+        dx2 = -kAB/V*x(1).*x(2); % B
+        dx3 =  kAA/V*x(1).^2; % AA
+        dx4 =  kAB/V*x(1).*x(2); % AB
+        dx = [dx1; dx2; dx3; dx4];
     end
 
 end
