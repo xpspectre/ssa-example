@@ -35,7 +35,7 @@ for i = 1:nRuns
     xs{i} = xSsa';
 end
 
-% Plot trajectories
+%% Plot trajectories
 figure
 plot(tOde, yOde, 'LineWidth', 2)
 hold on
@@ -49,26 +49,39 @@ xlabel('Time')
 ylabel('Counts')
 title(sprintf('A -> 0\nODE = thick, SSA = thin lines'))
 xlim([0, tf])
-legend('A','Location','best')
+% legend('A','Location','best')
 
-% Distribution of counts at times
+%% Distribution of counts at times
 %   Linear interpolation at query times
-nRuns = 100;
-nt = 10;
+nRuns = 1000;
+nt = 100;
 ts = linspace(0, tf, nt)';
 xs = zeros(nt,nRuns);
-% xMeans = zeros(nt,1);
-% xStds = zeros(nt,1);
 for i = 1:nRuns
     [t, x] = ssa_sim(tf + 0.01, x0);
-    xs(:,i) = interp1(t, x, ts, 'nearest');
+    xs(:,i) = interp1(t, x, ts, 'previous'); % method = previous is the correct one
 end
 
+xmean = mean(xs, 2);
+xstd = std(xs, 0, 2);
+
+lo1 = xmean - 1*xstd;
+hi1 = xmean + 1*xstd;
+lo2 = xmean - 2*xstd;
+hi2 = xmean + 2*xstd;
+
 figure
-errorbar(ts, mean(xs, 2), std(xs, 0, 2))
+h = plot(ts, xmean, 'LineWidth', 2);
+hold on
+color = get(h, 'Color');
+fill([ts; flipud(ts)], [lo2; flipud(hi2)], color, 'EdgeColor', 'none'); % plot outer 1st
+alpha(0.25)
+fill([ts; flipud(ts)], [lo1; flipud(hi1)], color, 'EdgeColor', 'none'); % then plot inner; overlap will add color
+alpha(0.25)
+hold off
 xlabel('Time')
 ylabel('Counts')
-title(sprintf('A -> 0\nMean +/- StdDev Counts'))
+title(sprintf('A -> 0\nMean, 1 StdDev, 2 StdDev Counts'))
 xlim([0, tf])
 ylim([0, A0])
 
