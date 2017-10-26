@@ -1,14 +1,12 @@
-function competition_ssa
-% Competition between 2 irreversible association reactions
-% A + A -> AA
-% A + B -> AB
-% Handles some corner cases in the ODE eqs and SSA implementation
+function dimerization_ssa
+% Reversible dimerization. Sanity check on 2nd order rxns of same species
+% A + A <-> AA
 clear; close all; clc
 rng('default');
 
 % Rate constants
-kAA = 1e6; % (1/(M*s))
-kAB = 2e6; % (1/(M*s))
+kf = 1e6; % (1/(M*s))
+kr = 1e-2; % (1/s)
 
 % Compartment volume
 V = 1e-15; % (L) ~E. coli cell volume
@@ -17,17 +15,15 @@ V = 1e-15; % (L) ~E. coli cell volume
 nA = 6.022e23; % count/mol
 
 % Initial conditions - concs
-A0 = 2e-7; % (M = mol/L)
-B0 = 1e-7; % (M)
+A0 = 1e-6; % (M = mol/L) 2e-7
 AA0 = 0;
-AB0 = 0;
 
-c0 = [A0; B0; AA0; AB0]; % in concs
+c0 = [A0; AA0]; % in concs
 x0 = round(c0*nA*V); % in counts
 % 1e-6 M at 1e-15 L is ~ 600 molecules
 
 % Set simulation conditions
-tf = 60; % (s)
+tf = 10; % (s) 100
 
 % Run ODE simulation
 opts = odeset('RelTol',1e-8,'AbsTol',1e-12);
@@ -57,31 +53,30 @@ end
 hold off
 xlabel('Time')
 ylabel('Counts')
-title(sprintf('A + A -> AA, A + B -> AB\nODE = thick, SSA = thin lines'))
+title(sprintf('A + A <-> AA\nODE = thick, SSA = thin lines'))
 xlim([0, tf])
-legend('A','B','AA','AB', 'Location','best')
+legend('A','AA', 'Location','best')
 
 % Ensure mass balance is satisifed at all times
-AOde = yOde(:,1) + 2*yOde(:,3) + yOde(:,4);
-BOde = yOde(:,2) + yOde(:,4);
+AOde = yOde(:,1) + 2*yOde(:,2);
 
 figure
-plot(tOde, [AOde, BOde], 'LineWidth', 2)
+plot(tOde, AOde, 'LineWidth', 2)
 hold on
 ax = gca;
 for i = 1:nRuns
     xSsa = xs{i};
-    ASsa = xSsa(:,1) + 2*xSsa(:,3) + xSsa(:,4);
-    BSsa = xSsa(:,2) + xSsa(:,4);
+    ASsa = xSsa(:,1) + 2*xSsa(:,2);
     ax.ColorOrderIndex = 1;
-    stairs(ts{i}, [ASsa, BSsa], 'd') % using regular plot here is not as accurate
+    stairs(ts{i}, ASsa, 'd') % using regular plot here is not as accurate
 end
 hold off
 xlabel('Time')
 ylabel('Counts')
-title(sprintf('A + A -> AA, A + B -> AB\nMass Balance Validation'))
+title(sprintf('A + A <-> AA\nMass Balance Validation'))
 xlim([0, tf])
-legend('A_{tot} ODE','B_{tot} ODE','A_{tot} SSA','B_{tot} SSA', 'Location','best')
+legend('A_{tot} ODE','A_{tot} SSA', 'Location','best')
+% Within the round error
 
 
     function [ts, xs] = ssa_sim(tf, x0)
@@ -112,8 +107,8 @@ legend('A_{tot} ODE','B_{tot} ODE','A_{tot} SSA','B_{tot} SSA', 'Location','best
             
             % Calculate reaction propensities and normalization
             a = zeros(1,2);
-            a(1) = kAA/(nA*V)*x(1)*(x(1)-1); % the 2*AA and x(1)*(x(1)-1)/2 cancels out
-            a(2) = kAB/(nA*V)*x(1)*x(2);
+            a(1) = kf/(nA*V)*x(1)*(x(1)-1); % the 2*kf and x(1)*(x(1)-1)/2 cancels out
+            a(2) = kr*x(2);
             ao = sum(a);
             
             % Calculate next reaction time
@@ -136,11 +131,10 @@ legend('A_{tot} ODE','B_{tot} ODE','A_{tot} SSA','B_{tot} SSA', 'Location','best
             switch u
                 case 1 % A + A -> AA
                     x(1) = x(1) - 2;
-                    x(3) = x(3) + 1;
-                case 2 % A + B -> AB
-                    x(1) = x(1) - 1;
+                    x(2) = x(2) + 1;
+                case 2 % AA -> A + A
+                    x(1) = x(1) + 2;
                     x(2) = x(2) - 1;
-                    x(4) = x(4) + 1;
             end
             
             % Store results
@@ -155,11 +149,9 @@ legend('A_{tot} ODE','B_{tot} ODE','A_{tot} SSA','B_{tot} SSA', 'Location','best
 
     function dx = ode_model(~, x)
         % ODE model for integrators
-        dx1 = -2*kAA*x(1).^2 - kAB*x(1).*x(2); % A
-        dx2 = -kAB*x(1).*x(2); % B
-        dx3 =  kAA*x(1).^2; % AA
-        dx4 =  kAB*x(1).*x(2); % AB
-        dx = [dx1; dx2; dx3; dx4];
+        dx1 = -2*kf*x(1).^2 + 2*kr*x(2); % A
+        dx2 =  kf*x(1).^2 - kr*x(2); % AA
+        dx = [dx1; dx2];
     end
 
 end
