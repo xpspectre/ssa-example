@@ -21,6 +21,7 @@ rng('default');
 % In SSA model, convert these to the equivalent per-count values using nA and V
 
 %% Rate constants
+% Actual reactions from Table 3
 k0 = 4.76e-18; % (L)
 k1 = 0.0007; % (1/s)
 k2 = 0.05; % (1/(M*s))
@@ -41,6 +42,22 @@ k16 = 0.6; % (1/s)
 k17 = 0.01; % (1/(M*s))
 k18 = 0.01; % (1/s)
 k19 = 0.001; % (1/s)
+
+% Tx/Tl from Table 2
+k22 = 30; % (nt/s) nt means nucleotide in an elongation rxn
+k23 = 5; % (nt/s)
+k24 = 0.145; % (1/(M*s))
+k25 = 0.1; % (1/s)
+k26 = 30; % (nt/s)
+k27 = 15; % (nt/s)
+k28 = 15; % (1/s)
+k29 = 30; % (nt/s) is there a k30?
+k31 = 5; % (nt/s)
+k32 = 25; % (1/s)
+k33 = 30; % (nt/s)
+k34 = 0.002; % (1/(M*S))
+k35 = 100; % (nt/s) nucleotide of mRNA traversed by ribosome
+% k36 should be hardcoded in as k36*RNase = 0.2 (1/s)
 
 % Initial compartment volume
 V = 1e-15; % (L)
@@ -169,19 +186,19 @@ tf = 35*60; % (s)
 nRuns = 5;
 ts = cell(nRuns,1);
 xs = cell(nRuns,1);
-for i = 1:nRuns
+for iRun = 1:nRuns
     [tSsa, xSsa] = ssa_sim(tf, x0);
-    ts{i} = tSsa';
-    xs{i} = xSsa';
+    ts{iRun} = tSsa';
+    xs{iRun} = xSsa';
 end
 
 % Plot trajectories
 figure
 hold on
 ax = gca;
-for i = 1:nRuns
+for iRun = 1:nRuns
     ax.ColorOrderIndex = 1;
-    stairs(ts{i}/60, xs{i}) % using regular plot here is not as accurate
+    stairs(ts{iRun}/60, xs{iRun}) % using regular plot here is not as accurate
 end
 hold off
 xlabel('Time')
@@ -201,10 +218,21 @@ xlim([0, tf/60]) % min
         t = 0;
         ts(it) = t;
         
+        % Storage for fixed states
         nx = length(x0);
         xs = zeros(nx,nt); % preallocate solution
         x = x0;
         xs(:,it) = x;
+        
+        % Storage for transient transcripts
+        %   Stores the state for RNAP_DNA_n in a "sparse" manner
+        %   Each promoter has a separate array
+        P_RE_txs = zeros(1,0); % empty row vector, will be 1 x # active transcripts from this promoter
+        P_L_txs  = zeros(1,0);
+        P_RM_txs = zeros(1,0);
+        P_R_txs  = zeros(1,0);
+        
+        % Storage for transient translation products
         
         while t <= tf
             % Increment solution index
@@ -240,6 +268,7 @@ xlim([0, tf/60]) % min
             
             %% Calculate reaction propensities
             a = zeros(1,23); % total fixed reactions, additional ones based on txtl will be appended as needed
+            
             a(1) = k1*CI;
             a(2) = k2/(nA*V)*CI*(CI-1); % check /2
             a(3) = k3*CI2;
@@ -274,22 +303,32 @@ xlim([0, tf/60]) % min
             P_L_ind = pick_rxn(P_L_probs);
             P_RRM_ind = pick_rxn(P_RRM_probs);
             
-            aP = zeros(4,1); % rxn propensities for the 4 promoter sites in order [RE,L,RM,R]
             P_RE_mask = ismember(P_RE_init_inds, P_RE_ind);
             if any(P_RE_mask)
-                aP(1) = P_RE_init_rates(P_RE_mask)*RNAP; % kOC is 1st order - is kOC*RNAP the right rate form?
+                a(20) = P_RE_init_rates(P_RE_mask); % kOC is 1st order - the transition from open -> closed to initiate transcription
             end
             P_L_mask = ismember(P_L_init_inds, P_L_ind);
             if any(P_L_mask)
-                aP(2) = P_L_init_rates(P_L_mask)*RNAP;
+                a(21) = P_L_init_rates(P_L_mask);
             end
             P_RRM_mask = ismember(P_RRM_init_inds, P_RRM_ind);
             if any(P_RRM_mask)
-                aP(3) = P_RM_init_rate*RNAP; % both possible directions
-                aP(4) = P_R_init_rate*RNAP;
+                a(22) = P_RM_init_rate; % both possible directions
+                a(23) = P_R_init_rate;
             end
             
-            a(20:23) = aP; % add on promoter state rxns
+            %% Transcription "reaction" propensities
+            % Tally all possible transcription elogations, termination/antitermination, etc.
+            % Each transcript can do something
+            aP_RE_tx = get_tx_propensities(P_RE_txs);
+            aP_L_tx = get_tx_propensities(P_L_txs);
+            aP_RM_tx = get_tx_propensities(P_RM_txs);
+            aP_R_tx = get_tx_propensities(P_R_txs);
+            a = [a; aP_RE_tx; aP_L_tx; aP_RM_tx; aP_R_tx];
+            % TODO mapping to perform elongation, and the elongation reaction itself
+            
+            %% Translation "reaction" propensities
+            % TODO
             
             %% Reaction propensity normaliation
             ao = sum(a);
@@ -310,7 +349,7 @@ xlim([0, tf/60]) % min
                 break
             end
             
-            % Update species
+            %% Perform reaction/update species
             % If it's not one of these, then go to sparse rxns
             switch u
                 case 1 % CI -> 0
@@ -376,19 +415,22 @@ xlim([0, tf/60]) % min
                     P2_CIII = P2_CIII - 1;
                     P2 = P2 + 1;
                 case 20 % P_RE initiation
-                    
+                    P_RE_txs = [P_RE_txs, 1]; % make new transcript at starting position
                 case 21 % P_L initiation
-                    
+                    P_L_txs = [P_L_txs, 1];
                 case 22 % P_RM initiation
-                    
+                    P_RM_txs = [P_RM_txs, 1];
                 case 23 % P_R initiation
-                    
+                    P_R_txs = [P_R_txs, 1];
             end
             
-            % Recombine fixed states
-            x = [Cro, CI, CII, CIII, P1, P2, N, Cro2, CI2, P1_CII, P1_CIII, P2_CII, P2_CIII]';
+            % Transcription reactions
+            %   If u
             
-            % Store results
+            %% Recombine fixed states
+            x = [Cro, CI, CII, CIII, P1, P2, N, Cro2, CI2, P1_CII, P1_CIII, P2_CII, P2_CIII, RNAP, ribo]';
+            
+            %% Store results
             ts(it) = t;
             xs(:,it) = x;
         end
@@ -400,6 +442,8 @@ xlim([0, tf/60]) % min
         %% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         % Helper functions
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        
+        % Promoter state probabilities
         function probs = get_P_RE_probs()
             % Calculate P_RE promoter state probabilities
             %   See Arkin 98 Table 1
@@ -483,6 +527,30 @@ xlim([0, tf/60]) % min
             Z = sum(weights);
             probs = weights / Z;
         end
+        
+        % Transcription
+        function atxs = get_tx_propensities(txs)
+            % Calculate reaction propensities for transcription reactions
+            % txs is the array of transcripts from a particular promoter, a 1 x
+            %   # active transcripts from this promoter vector
+            ntxs = length(txs);
+            atxs = zeros(ntxs,1);
+            if ntxs == 0 % no transcripts -> no possibl rxns
+                return
+            end
+            
+            % TODO: logic for position-dependent transitions or initiation of
+            %   ability to translate
+            % Right now, just do simple elongation
+            % TODO: figure out if there's a conc/conc that should be multiplied
+            %   by below. Is it just implicitly 1, because there's 1 of that
+            %   state?
+            
+            for itx = 1:ntxs
+                atxs(itx) = k22; % implicit *1 count for this species?
+            end
+            
+        end
     end
 
 
@@ -490,8 +558,8 @@ xlim([0, tf/60]) % min
 end
 
 function ind = pick_rxn(probs)
-% Vectorized function to pick a state to jump to based on a list of
-% probabilities
+% Vectorized function to pick a state to jump to based on a list of probabilities
+%   Could be replaced by randsample
 
 selection = rand;
 
