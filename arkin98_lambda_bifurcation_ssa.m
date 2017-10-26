@@ -45,15 +45,102 @@ k19 = 0.001; % (1/s)
 % Initial compartment volume
 V = 1e-15; % (L)
 
-% Avogadro's number
-nA = 6.022e23; % (count/mol)
+% Constants
+nA = 6.022e23; % (count/mol) Avogadro's number
+R = 1.9872e-3; % (kcal/(K*mol)) gas constant
+T = 273 + 37; % (K) temperature
 
-% Main states: x = [Cro, CI, CII, CIII, P1, P2, N, Cro2, CI2, P1_CII, P1_CIII, P2_CII, P2_CIII]
-% Promotor states:
-% Transcribing states:
-% Translating states:
+%% Promoter state energy weights
+% P_RE
+g = zeros(4,1); % energies
+g(1) = 0.0; % reference energy
+g(2) = -9.9; % (kcal/mol)
+g(3) = -9.7;
+g(4) = -21.5;
+pg_P_RE = exp(-g./(R*T));
+
+% P_L
+g = zeros(10,1); % energies
+g(1) = 0.0; % reference energy
+g(2) = -10.9; % (kcal/mol)
+g(3) = -12.1;
+g(4) = -11.7;
+g(5) = -10.1;
+g(6) = -12.5;
+g(7) = -22.9;
+g(8) = -20.9;
+g(9) = -22.8;
+g(10) = 23.7;
+pg_P_L = exp(-g./(R*T));
+
+% P_R and P_RM
+dG1  = -11.7; % (kcal/mol)
+dG2  = -10.1;
+dG3  = -10.1;
+dG1p = -10.8;
+dG2p = -10.8;
+dG3p = -12.1;
+dGRM = -11.5;
+dGR  = -12.5;
+dG12 = -1.9; % calculated
+dG23 = -2.0; % calculated
+
+g = zeros(40,1); % energies
+g(1) = 0.0; % reference energy
+g(2) = dG1; % (kcal/mol)
+g(3) = dG2;
+g(4) = dG3;
+g(5) = dG1p;
+g(6) = dG2p;
+g(7) = dG3p;
+g(8) = dGRM;
+g(9) = dGR;
+g(10) = dG1 + dG2 + dG12;
+g(11) = dG1 + dG3;
+g(12) = dG2 + dG3 + dG23;
+g(13) = dG1p + dG2p;
+g(14) = dG1p + dG3p;
+g(15) = dG2p + dG3p;
+g(16) = dGR + dGRM;
+g(17) = dG1 + dG2p;
+g(18) = dG1p + dG2;
+g(19) = dG1p + dG3;
+g(20) = dG1 + dG3p;
+g(21) = dG2p + dG3;
+g(22) = dG2 + dG3p;
+g(23) = dGR + dG3;
+g(24) = dG2 + dGRM;
+g(25) = dG1 + dGRM;
+g(26) = dGR + dG3p;
+g(27) = dG2p + dGRM;
+g(28) = dG2p + dGRM;
+g(29) = dG1 + dG2 + dG3 + dG12;
+g(30) = dG1p + dG2p + dG3p;
+g(31) = dG1 + dG2 + dG3p + dG12;
+g(32) = dG1 + dG2p + dG3;
+g(33) = dG1p + dG2 + dG3 + dG23;
+g(34) = dG1p + dG2p + dG3;
+g(35) = dG1p + dG2 + dG3p;
+g(36) = dG1 + dG2p +dG3p;
+g(37) = dG1 + dG2 + dGRM + dG12;
+g(38) = dG1p + dG2p + dGRM;
+g(39) = dG1 + dG2p + dGRM;
+g(40) = dG1p + dG2 + dGRM;
+pg_P_RRM = exp(-g./(R*T));
+
+%% Promoter initializables rates
+P_RE_init_inds = [2,4];
+P_RE_init_rates = [0.00004,0.015]; % (1/s)
+
+P_L_init_inds = [6];
+P_L_init_rates = [0.011]; % (1/s)
+
+P_RRM_init_inds = [8:9,23:28,37:40];
+P_RM_init_rate = 0.011; % (1/s) Shea 85, Table 3, Stimulated P_RM k_Promoter, single val
+P_R_init_rate =0.014; % (1/s) Shea 85, Table 3, Basal P_R k_Promoter treated as stimulated, single val
 
 %% Initial conditions - counts
+% Main states: x = [Cro, CI, CII, CIII, P1, P2, N, Cro2, CI2, P1_CII, P1_CIII, P2_CII, P2_CIII, RNAP, ribo]
 Cro_0  = 0;
 CI_0   = 0;
 CII_0  = 0;
@@ -67,23 +154,12 @@ P1_CII_0  = 0;
 P1_CIII_0 = 0;
 P2_CII_0  = 0;
 P2_CIII_0 = 0;
+RNAP_0 = 30e-9; % (M) free RNA polymerase
+ribo_0 = 500e-9; % (M) free ribosomes
 
-c0 = [Cro_0, CI_0, CII_0, CIII_0, P1_0, P2_0, N_0, Cro2_0, CI2_0, P1_CII_0, P1_CIII_0, P2_CII_0, P2_CIII_0];
-
-RNAP_0 = 30e-9; % (M)
-ribo_0 = 500e-9; % (M) ribosomes
+c0 = [Cro_0, CI_0, CII_0, CIII_0, P1_0, P2_0, N_0, Cro2_0, CI2_0, P1_CII_0, P1_CIII_0, P2_CII_0, P2_CIII_0, RNAP_0, ribo_0];
 
 x0 = round(c0*nA*V);
-
-%% Promoter state
-% P_RE: Table 1 of Arkin 98
-
-
-% P_L: Table 1 of Arkin 98
-
-
-% P_R and P_RM: Table 2 of Shea 85
-
 
 %% Set simulation conditions
 tf = 35*60; % (s)
@@ -155,16 +231,15 @@ xlim([0, tf/60]) % min
             P1_CIII = x(11);
             P2_CII  = x(12);
             P2_CIII = x(13);
+            RNAP = x(14);
+            ribo = x(15);
             
             % Calculate volume
             %   Cell grows continuously from t = 0 to t = 35 min, doubling in size
             V = (1 + k0*t) * 1e-15; % (L)
             
-            % Calculate promoter state probabilities
-            
-            
-            % Calculate reaction propensities and normalization
-            a = zeros(1,19); % total fixed reactions, additional ones based on txtl will be appended as needed
+            %% Calculate reaction propensities
+            a = zeros(1,23); % total fixed reactions, additional ones based on txtl will be appended as needed
             a(1) = k1*CI;
             a(2) = k2/(nA*V)*CI*(CI-1); % check /2
             a(3) = k3*CI2;
@@ -184,7 +259,39 @@ xlim([0, tf/60]) % min
             a(17) = k17/(nA*V)*CIII*P2;
             a(18) = k18*P2_CIII;
             a(19) = k19*P2_CIII;
+                    
+            %% Calculate promoter state probabilities, select, and add rxns
+            % Fast promoter state equilibrium assumption
+            % If an initiatiable promoter state is selected, add that initiation
+            %   to the list of possible reactions (the rest are assumed 0)
+            % Initially, when there's no proteins, RNAP binding is heavily favored
+            % But the double RNAP P_RM+P_R can't initiate
+            P_RE_probs = get_P_RE_probs()';
+            P_L_probs = get_P_L_probs()';
+            P_RRM_probs = get_P_RRM_probs()';
             
+            P_RE_ind = pick_rxn(P_RE_probs);
+            P_L_ind = pick_rxn(P_L_probs);
+            P_RRM_ind = pick_rxn(P_RRM_probs);
+            
+            aP = zeros(4,1); % rxn propensities for the 4 promoter sites in order [RE,L,RM,R]
+            P_RE_mask = ismember(P_RE_init_inds, P_RE_ind);
+            if any(P_RE_mask)
+                aP(1) = P_RE_init_rates(P_RE_mask)*RNAP; % kOC is 1st order - is kOC*RNAP the right rate form?
+            end
+            P_L_mask = ismember(P_L_init_inds, P_L_ind);
+            if any(P_L_mask)
+                aP(2) = P_L_init_rates(P_L_mask)*RNAP;
+            end
+            P_RRM_mask = ismember(P_RRM_init_inds, P_RRM_ind);
+            if any(P_RRM_mask)
+                aP(3) = P_RM_init_rate*RNAP; % both possible directions
+                aP(4) = P_R_init_rate*RNAP;
+            end
+            
+            a(20:23) = aP; % add on promoter state rxns
+            
+            %% Reaction propensity normaliation
             ao = sum(a);
             
             % Calculate next reaction time
@@ -268,6 +375,14 @@ xlim([0, tf/60]) % min
                 case 19 % P2_CIII -> P2
                     P2_CIII = P2_CIII - 1;
                     P2 = P2 + 1;
+                case 20 % P_RE initiation
+                    
+                case 21 % P_L initiation
+                    
+                case 22 % P_RM initiation
+                    
+                case 23 % P_R initiation
+                    
             end
             
             % Recombine fixed states
@@ -281,7 +396,96 @@ xlim([0, tf/60]) % min
         % Trim solution
         ts = ts(1:it);
         xs = xs(:,1:it);
+        
+        %% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        % Helper functions
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        function probs = get_P_RE_probs()
+            % Calculate P_RE promoter state probabilities
+            %   See Arkin 98 Table 1
+            c = zeros(4,1); % concentrations - counts are fine since conversion to concs is just a constant that's factored out
+            c(1) = 1; % empty, no concs
+            c(2) = RNAP; % (counts)
+            c(3) = CII;
+            c(4) = CII*RNAP;
+            
+            weights = pg_P_RE.*c;
+            Z = sum(weights);
+            probs = weights / Z;
+        end
+        
+        function probs = get_P_L_probs()
+            % Calculate P_L promoter state probabilities
+            %   See Arkin 98 Table 1
+            c = zeros(10,1);
+            c(1) = 1; % empty, no concs
+            c(2) = Cro2; % (counts)
+            c(3) = Cro2;
+            c(4) = CI2;
+            c(5) = CI2;
+            c(6) = RNAP;
+            c(7) = Cro2^2;
+            c(8) = Cro2*CI2;
+            c(9) = CI2*Cro2;
+            c(10) = CI2^2;
+            
+            weights = pg_P_L.*c;
+            Z = sum(weights);
+            probs = weights / Z;
+        end
+        
+        function probs = get_P_RRM_probs()
+            % Calculate P_R and P_RM promoter state probabilities
+            %   See Shea 85 Table 2
+            c = zeros(40,1);
+            c(1) = 1; % empty, no concs
+            c(2) = CI2; % (counts)
+            c(3) = CI2;
+            c(4) = CI2;
+            c(5) = Cro2;
+            c(6) = Cro2;
+            c(7) = Cro2;
+            c(8) = RNAP;
+            c(9) = RNAP;
+            c(10) = CI2^2;
+            c(11) = CI2^2;
+            c(12) = CI2^2;
+            c(13) = Cro2^2;
+            c(14) = Cro2^2;
+            c(15) = Cro2^2;
+            c(16) = RNAP^2;
+            c(17) = CI2*Cro2;
+            c(18) = CI2*Cro2;
+            c(19) = CI2*Cro2;
+            c(20) = CI2*Cro2;
+            c(21) = CI2*Cro2;
+            c(22) = CI2*Cro2;
+            c(23) = CI2*RNAP;
+            c(24) = CI2*RNAP;
+            c(25) = CI2*RNAP;
+            c(26) = Cro2*RNAP;
+            c(27) = Cro2*RNAP;
+            c(28) = Cro2*RNAP;
+            c(29) = CI2^3;
+            c(30) = Cro2^3;
+            c(31) = CI2^2*Cro2;
+            c(32) = CI2^2*Cro2;
+            c(33) = CI2^2*Cro2;
+            c(34) = CI2*Cro2^2;
+            c(35) = CI2*Cro2^2;
+            c(36) = CI2*Cro2^2;
+            c(37) = RNAP*CI2^2;
+            c(38) = RNAP*Cro2^2;
+            c(39) = RNAP*CI2*Cro2;
+            c(40) = RNAP*CI2*Cro2;
+            
+            weights = pg_P_RRM.*c;
+            Z = sum(weights);
+            probs = weights / Z;
+        end
     end
+
+
 
 end
 
