@@ -591,6 +591,7 @@ xlim([0, tf/60]) % min
             %   Keeps going to transcribe int and xis. Should this be modeled?
             NUT_Lpos = 50;
             T_L1pos = 1022;
+            Lastpos = 2300; % arbitrary last pos
             
             ntxs = size(P_L_txs,2);
             aP_L_tx = zeros(1,0); % don't know how many possible rxns yet
@@ -609,25 +610,30 @@ xlim([0, tf/60]) % min
             for itx = 1:ntxs
                 pos = P_L_txs(1,itx);
                 antiterm = P_L_txs(2,itx); % 0 for not antiterm, 1 for antiterm
-                if pos < NUT_Lpos || pos > NUT_Lpos && pos < T_L1pos || pos > T_L1pos % regular tx
+                if pos < NUT_Lpos || pos > NUT_Lpos && pos < T_L1pos || pos > T_L1pos && pos <= Lastpos % regular tx
                     ai = [k22];
-                    fi = {@() k22rxn(itx)};
+                    fi = {@()k22rxn(itx)};
                 elseif pos == NUT_Lpos % at antitermination site
-                    ai = [k23, k24*N, k25, k26];
+                    ai = [k23, k24/(nA*V)*N, k25, k26];
                     if antiterm
                         ai = ai.*antitermRxns;
                     else
                         ai = ai.*~antitermRxns;
                     end
-                    fi = {@() k23rxn(itx),@() k24rxn(itx),@() k25rxn(itx),@() k26rxn(itx)};
+                    fi = {@()k23rxn(itx), @()k24rxn(itx), @()k25rxn(itx), @()k26rxn(itx)};
                 elseif pos == T_L1pos % at termination site
-                    ai = [k31,k32,k33];
+                    ai = [k31, k32, k33];
                     if antiterm
                         ai = ai.*termRxns;
                     else
                         ai = ai.*~termRxns;
                     end
-                    fi = {@() k31rxn(itx),@() k32rxn(itx),@() k33rxn(itx)};
+                    fi = {@()k31rxn(itx), @()k32rxn(itx), @()k33rxn(itx)};
+                elseif pos > Lastpos % terminate definitely
+                    ai = [k32]; % use the same termination mechanism as before
+                    fi = {@()k32rxn(itx)};
+                else
+                    error('Should not get here')
                 end
                 aP_L_tx = [aP_L_tx, ai];
                 fP_L_tx = [fP_L_tx, fi];
