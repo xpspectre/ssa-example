@@ -226,13 +226,25 @@ xlim([0, tf/60]) % min
         
         % Storage for transient transcripts
         %   Stores the state for RNAP_DNA_n in a "sparse" manner
-        %   Each promoter has a separate array
-        P_RE_txs = zeros(1,0); % empty row vector, will be 1 x # active transcripts from this promoter
-        P_L_txs  = zeros(1,0);
-        P_RM_txs = zeros(1,0);
-        P_R_txs  = zeros(1,0);
+        %   Each promoter has a separate matrix, where each col is an active
+        %       transcript, row 1 is the pos, row 2 is the antitermination state (bound to N)
+        P_RE_txs = zeros(2,0);
+        P_L_txs  = zeros(2,0);
+        P_RM_txs = zeros(2,0);
+        P_R_txs  = zeros(2,0);
+        
+        aP_RE_tx = zeros(1,0);
+        aP_L_tx  = zeros(1,0);
+        aP_RM_tx = zeros(1,0);
+        aP_R_tx  = zeros(1,0);
+        
+        fP_RE_tx = cell(1,0);
+        fP_L_tx  = cell(1,0);
+        fP_RM_tx = cell(1,0);
+        fP_R_tx  = cell(1,0);
         
         % Storage for transient translation products
+        
         
         while t <= tf
             % Increment solution index
@@ -267,7 +279,8 @@ xlim([0, tf/60]) % min
             V = (1 + k0*t) * 1e-15; % (L)
             
             %% Calculate reaction propensities
-            a = zeros(1,23); % total fixed reactions, additional ones based on txtl will be appended as needed
+            naFixed = 23; % total fixed reactions, additional ones based on txtl will be appended as needed
+            a = zeros(1,naFixed);
             
             a(1) = k1*CI;
             a(2) = k2/(nA*V)*CI*(CI-1); % check /2
@@ -320,12 +333,16 @@ xlim([0, tf/60]) % min
             %% Transcription "reaction" propensities
             % Tally all possible transcription elogations, termination/antitermination, etc.
             % Each transcript can do something
-            aP_RE_tx = get_tx_propensities(P_RE_txs);
-            aP_L_tx = get_tx_propensities(P_L_txs);
-            aP_RM_tx = get_tx_propensities(P_RM_txs);
-            aP_R_tx = get_tx_propensities(P_R_txs);
-            a = [a; aP_RE_tx; aP_L_tx; aP_RM_tx; aP_R_tx];
-            % TODO mapping to perform elongation, and the elongation reaction itself
+            get_P_RE_propensities();
+            get_P_L_propensities();
+            get_P_RM_propensities();
+            get_P_R_propensities();
+            
+            aP = [aP_RE_tx, aP_L_tx, aP_RM_tx, aP_R_tx];
+            fP = [fP_RE_tx, fP_L_tx, fP_RM_tx, fP_R_tx];
+            
+            naP = size(aP,2);
+            a = [a, aP];
             
             %% Translation "reaction" propensities
             % TODO
@@ -415,17 +432,29 @@ xlim([0, tf/60]) % min
                     P2_CIII = P2_CIII - 1;
                     P2 = P2 + 1;
                 case 20 % P_RE initiation
-                    P_RE_txs = [P_RE_txs, 1]; % make new transcript at starting position
+                    P_RE_txs = [P_RE_txs, [1;0]]; % make new transcript at starting position in non-antiterminated state
+                    RNAP = RNAP - 1; % 1 free RNAP is used to make the transcript
                 case 21 % P_L initiation
-                    P_L_txs = [P_L_txs, 1];
+                    P_L_txs = [P_L_txs, [1;0]];
+                    RNAP = RNAP - 1;
                 case 22 % P_RM initiation
-                    P_RM_txs = [P_RM_txs, 1];
+                    P_RM_txs = [P_RM_txs, [1;0]];
+                    RNAP = RNAP - 1;
                 case 23 % P_R initiation
-                    P_R_txs = [P_R_txs, 1];
+                    P_R_txs = [P_R_txs, [1;0]];
+                    RNAP = RNAP - 1;
             end
             
             % Transcription reactions
-            %   If u
+            if u > naFixed && u <= naFixed+naP
+                u = u - naFixed; % the tx rxns are their own set of indices
+                fP{u}();
+            end
+            
+            % Translation reactions
+            if u > naFixed+naP
+                u = u - (naFixed+nAP); % the tl rxns are their own set of indices
+            end
             
             %% Recombine fixed states
             x = [Cro, CI, CII, CIII, P1, P2, N, Cro2, CI2, P1_CII, P1_CIII, P2_CII, P2_CIII, RNAP, ribo]';
@@ -528,29 +557,118 @@ xlim([0, tf/60]) % min
             probs = weights / Z;
         end
         
-        % Transcription
-        function atxs = get_tx_propensities(txs)
-            % Calculate reaction propensities for transcription reactions
-            % txs is the array of transcripts from a particular promoter, a 1 x
-            %   # active transcripts from this promoter vector
-            ntxs = length(txs);
-            atxs = zeros(ntxs,1);
-            if ntxs == 0 % no transcripts -> no possibl rxns
+        %% Transcription
+        function get_P_RE_propensities()
+            % This runs in the reverse direction
+            %   P_RE starts tx at pos 38343
+            %
+            
+%             ntxs = size(P_RE_txs,2);
+%             aP_RE_tx = zeros(1,ntxs);
+%             fP_RE_tx = cell(1,ntxs);
+%             if ntxs == 0 % no transcripts -> no possibl rxns
+%                 return
+%             end
+%             
+%             for itx = 1:ntxs
+%                 aP_RE_tx(itx) = k22; % implicit *1 count for this species
+%                 fP_RE_tx{itx} = @() k22rxn(itx);
+%             end
+%             
+%             % Helper functions that modify transcript state
+%             function k22rxn(i)
+%                 P_RE_txs(1,i) = P_RE_txs(1,i) + 1;
+%             end
+        end
+        
+        function get_P_L_propensities()
+            % This runs in the reverse direction
+            %   P_L starts tx at pos 35582 (pos 0)
+            %   Antiterminated at NUT_L at pos before N (pos 50)
+            %   N starts at pos 35438 and ends at pos 35037 (pos 144-545)
+            %   Terminated at T_L1 at pos 34560 (pos 1022)
+            %   cIII starts at pos 33463 and ends at pos 33299 (pos 2119-2283)
+            %   Keeps going to transcribe int and xis. Should this be modeled?
+            NUT_Lpos = 50;
+            T_L1pos = 1022;
+            
+            ntxs = size(P_L_txs,2);
+            aP_L_tx = zeros(1,0); % don't know how many possible rxns yet
+            fP_L_tx = cell(1,0);
+            
+             % No transcripts -> no possible rxns
+            if ntxs == 0
                 return
             end
             
-            % TODO: logic for position-dependent transitions or initiation of
-            %   ability to translate
-            % Right now, just do simple elongation
-            % TODO: figure out if there's a conc/conc that should be multiplied
-            %   by below. Is it just implicitly 1, because there's 1 of that
-            %   state?
-            
+            % Build up possible rxns
+            %   In all rxns there's an implicit x1 for the transcription complex
+            %   Some rxns are only possible if antiterm, others are only possible if not antiterm
+            antitermRxns = [false,false,true,true]; % if antiterm
+            termRxns = [false,false,true]; % if antiterm
             for itx = 1:ntxs
-                atxs(itx) = k22; % implicit *1 count for this species?
+                pos = P_L_txs(1,itx);
+                antiterm = P_L_txs(2,itx); % 0 for not antiterm, 1 for antiterm
+                if pos < NUT_Lpos || pos > NUT_Lpos && pos < T_L1pos || pos > T_L1pos % regular tx
+                    ai = [k22];
+                    fi = {@() k22rxn(itx)};
+                elseif pos == NUT_Lpos % at antitermination site
+                    ai = [k23, k24*N, k25, k26];
+                    if antiterm
+                        ai = ai.*antitermRxns;
+                    else
+                        ai = ai.*~antitermRxns;
+                    end
+                    fi = {@() k23rxn(itx),@() k24rxn(itx),@() k25rxn(itx),@() k26rxn(itx)};
+                elseif pos == T_L1pos % at termination site
+                    ai = [k31,k32,k33];
+                    if antiterm
+                        ai = ai.*termRxns;
+                    else
+                        ai = ai.*~termRxns;
+                    end
+                    fi = {@() k31rxn(itx),@() k32rxn(itx),@() k33rxn(itx)};
+                end
+                aP_L_tx = [aP_L_tx, ai];
+                fP_L_tx = [fP_L_tx, fi];
             end
             
+            % Helper functions that modify transcript state
+            function k22rxn(i)
+                P_L_txs(1,i) = P_L_txs(1,i) + 1;
+            end
+            function k23rxn(i) % go thru antitermination site w/o antitermination
+                P_L_txs(1,i) = P_L_txs(1,i) + 1;
+            end
+            function k24rxn(i) % bind w/ antiterminator
+                P_L_txs(2,i) = 1;
+            end
+            function k25rxn(i) % unbind w/ antiterminator
+                P_L_txs(2,i) = 0;
+            end
+            function k26rxn(i) % go thru antitermination site w/ antitermination
+                P_L_txs(1,i) = P_L_txs(1,i) + 1;
+            end
+            function k31rxn(i) % go thru termination site w/o antitermination
+                P_L_txs(1,i) = P_L_txs(1,i) + 1;
+            end
+            function k32rxn(i) % fall off at termination site w/o antitermination
+                P_L_txs = [P_L_txs(:,1:i-1), P_L_txs(:,i+1:end)];
+                RNAP = RNAP + 1;
+            end
+            function k33rxn(i) % go thru termination site w/ antitermination
+                P_L_txs(1,i) = P_L_txs(1,i) + 1;
+            end
         end
+        
+        function get_P_RM_propensities()
+            
+        end
+        
+        function get_P_R_propensities()
+            
+        end
+        
     end
 
 
