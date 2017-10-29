@@ -9,7 +9,7 @@ function bistable_competition
 % See T.S.Gardner et al, Nature 2000. From Problem Set 2, Problem 3b from
 %   Systems Bio 7.32, 2016
 clear; close all; clc
-% rng('default'); % remove this to get different traces
+rng('default'); % remove this to get different traces
 
 % Rate constants
 %   k = 100 ensures that 1 will dominate forever (more or less); set tf >= 20
@@ -22,33 +22,63 @@ k = 100;
 %   This is completely fair but makes the ODE lines harder to distinguish
 %   More interesting: set them slightly different and see the "wrong" one
 %       dominate in the stochastic sim
-A0 = 50;
-B0 = 45;
-
+A0 = 52;
+B0 = 48;
 x0 = [A0, B0];
 
 % Set simulation conditions
 tf = 30;
 
-% Run ODE simulation
+%% Run ODE simulation
 [tOde, yOde] = ode15s(@ode_model, [0, tf], x0');
 
-% Run stochastic simulation
-[tSsa, xSsa] = ssa_sim(tf, x0);
+%% Run a few stochastic simulation
+%   Run enough that (w/ a reproducible RNG seed) we see both A and B dominant runs
+nSims = 3;
+for iSim = 1:nSims
+    [tSsa, xSsa] = ssa_sim(tf, x0);
+    
+    % Plot trajectories
+    figure
+    plot(tOde, yOde, 'LineWidth', 2)
+    hold on
+    ax = gca;
+    ax.ColorOrderIndex = 1;
+    stairs(tSsa, xSsa)
+    hold off
+    xlabel('Time')
+    ylabel('Counts')
+    title(sprintf('Bistable Competition, Slightly Off Initial Amounts\nODE = thick, SSA = thin lines'))
+    xlim([0, tf])
+    legend('A','B', 'Location','best')
+end
 
-% Plot trajectories
-figure
-plot(tOde, yOde, 'LineWidth', 2)
-hold on
-ax = gca;
-ax.ColorOrderIndex = 1;
-stairs(tSsa, xSsa)
-hold off
-xlabel('Time')
-ylabel('Counts')
-title(sprintf('Bistable Competition\nODE = thick, SSA = thin lines'))
-xlim([0, tf])
-legend('A','B', 'Location','best') 
+%% Run sims with exactly matched initial A and B
+% It's hard to see the A and B ODE lines exactly on top of each other
+A0 = 50;
+B0 = 50;
+x0 = [A0, B0];
+
+[tOde, yOde] = ode15s(@ode_model, [0, tf], x0');
+
+nSims = 3;
+for iSim = 1:nSims
+    [tSsa, xSsa] = ssa_sim(tf, x0);
+    
+    % Plot trajectories
+    figure
+    plot(tOde, yOde, 'LineWidth', 2)
+    hold on
+    ax = gca;
+    ax.ColorOrderIndex = 1;
+    stairs(tSsa, xSsa)
+    hold off
+    xlabel('Time')
+    ylabel('Counts')
+    title(sprintf('Bistable Competition, Equal Initial Amounts\nODE = thick, SSA = thin lines'))
+    xlim([0, tf])
+    legend('A','B', 'Location','best')
+end
 
 % TODO: distributions of results
 
