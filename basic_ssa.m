@@ -1,27 +1,33 @@
 function basic_ssa
-% Basic reversible binding model
-% A + B <-> C
+% Basic reversible binding model, i.e., protein + ligand <-> complex
+% P + L <-> C
 clear; close all; clc
 rng('default');
 
 % Rate constants
-kon = 5;
-koff = 3;
+kon = 1e5; % (1/(M*s))
+koff = 1e-2; % (1/s)
 
 % Compartment volume
-V = 1.5;
+V = 1e-15; % (L) ~E. coli cell volume
+
+% Avogadro's number
+nA = 6.022e23; % count/mol
 
 % Initial conditions - counts
-A0 = 50;
-B0 = 25;
-C0 = 0;
+P0 = 3e-7; % (M)
+L0 = 1e-6; % (M)
+C0 = 0; % (M)
+
+c0 = [P0, L0, C0]; % in concs
+x0 = round(c0*nA*V); % in counts
 
 % Set simulation conditions
-x0 = [A0; B0; C0];
-tf = 5e-2;
+tf = 100;
 
 % Run ODE simulation
-[tOde, yOde] = ode15s(@ode_model, [0, tf], x0);
+[tOde, cOde] = ode15s(@ode_model, [0, tf], c0');
+yOde = cOde*nA*V;
 
 % Run stochastic simulation
 %   Each run implicitly uses a different RNG seed
@@ -30,8 +36,8 @@ ts = cell(nRuns,1);
 xs = cell(nRuns,1);
 for i = 1:nRuns
     [tSsa, xSsa] = ssa_sim(tf, x0);
-    ts{i} = tSsa';
-    xs{i} = xSsa';
+    ts{i} = tSsa;
+    xs{i} = xSsa;
 end
 
 % Plot trajectories
@@ -46,25 +52,25 @@ end
 hold off
 xlabel('Time')
 ylabel('Counts')
-title(sprintf('A + B <-> C\nODE = thick, SSA = thin lines'))
+title(sprintf('P + L <-> C\nODE = thick, SSA = thin lines'))
 xlim([0, tf])
-legend('A','B','C','Location','best')
+legend('P','L','C','Location','best')
 
 
     function [ts, xs] = ssa_sim(tf, x0)
         % Gillespie stochastic simulation algorithm
-        % States: x1 = A, x2 = B, x3 = C
+        % States: x1 = P, x2 = L, x3 = C
         % Rxns: a1 = on, a2 = off
         nt = 1e3; % preallocate times to start with
-        ts = zeros(1,nt);
+        ts = zeros(nt,1);
         it = 1;
         t = 0;
         ts(it) = t;
         
         nx = length(x0);
-        xs = zeros(nx,nt); % preallocate solution
+        xs = zeros(nt,nx); % preallocate solution
         x = x0;
-        xs(:,it) = x;
+        xs(it,:) = x;
         
         while t <= tf
             % Increment solution index
@@ -72,15 +78,15 @@ legend('A','B','C','Location','best')
             
             % Reallocate more solution space if needed (double each time)
             if it == nt
-                ts = [ts, zeros(1,nt)];
-                xs = [xs, zeros(nx,nt)];
+                ts = [ts; zeros(nt,1)];
+                xs = [xs; zeros(nt,nx)];
                 nt = nt * 2;
 %                 fprintf('Extended solution in step %i\n', it)
             end
             
             % Calculate reaction propensities and normalization
             a = zeros(1,2);
-            a(1) = kon*x(1)*x(2)/V;
+            a(1) = kon/(nA*V)*x(1)*x(2);
             a(2) = koff*x(3);
             ao = sum(a);
             
@@ -96,7 +102,7 @@ legend('A','B','C','Location','best')
             % Handle corner case of no rxns possible (i.e., depletion)
             if isinf(t) || isempty(u)
                 ts(it) = tf;
-                xs(:,it) = x;
+                xs(it,:) = x;
                 break
             end
             
@@ -114,19 +120,19 @@ legend('A','B','C','Location','best')
             
             % Store results
             ts(it) = t;
-            xs(:,it) = x;
+            xs(it,:) = x;
         end
         
         % Trim solution
         ts = ts(1:it);
-        xs = xs(:,1:it);
+        xs = xs(1:it,:);
     end
 
     function dx = ode_model(~, x)
         % ODE model for integrators
-        dx1 = -kon/V*x(1)*x(2) + koff*x(3);
-        dx2 = -kon/V*x(1)*x(2) + koff*x(3);
-        dx3 =  kon/V*x(1)*x(2) - koff*x(3);
+        dx1 = -kon*x(1)*x(2) + koff*x(3);
+        dx2 = -kon*x(1)*x(2) + koff*x(3);
+        dx3 =  kon*x(1)*x(2) - koff*x(3);
         dx = [dx1; dx2; dx3];
     end
 
