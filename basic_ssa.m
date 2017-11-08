@@ -33,7 +33,9 @@ useConcs = true; % if false, use counts
 nRuns = 1000; % per volume
 nShowTraces = 3;
 
-Vs = [1e-15, 1e-16, 1e-17];
+% Vs = [1e-15, 1e-16, 1e-17];
+% Vs = [1e-15, 5e-16, 1e-16];
+Vs = [5e-17, 25e-17, 125e-17];
 nV = length(Vs);
 
 tOdes = cell(nV,1);
@@ -96,8 +98,9 @@ for iV = 1:nV
     
     xmean = squeeze(mean(xs, 1));
     xstd = squeeze(std(xs, 0, 1));
-    xlo = xmean - xstd;
-    xhi = xmean + xstd;
+    nstds = 2;
+    xlo = xmean - nstds*xstd;
+    xhi = xmean + nstds*xstd;
     
     ymax = max(ymax, max(xhi(:))); % highest vals in the sim
     
@@ -112,7 +115,7 @@ hold off
 xlabel('Time (s)')
 ylabel('Conc (M)')
 ylim([0, ymax*1.1])
-title(sprintf('P + L <-> C\nODE and SSA with +/-1 std dev for different volumes'))
+title(sprintf('P + L <-> C\nODE and SSA with +/-%i std dev for different volumes', nstds))
 xlim([0, tf])
 legend('P','L','C','Location','best')
 
