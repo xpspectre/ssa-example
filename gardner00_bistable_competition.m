@@ -1,13 +1,24 @@
 function gardner00_bistable_competition
 % Positive feedback and mutual inhibition of 2 genes causes bistability
 %   based on the original syn bio paper
-% Everything in normalized units, same forms as the paper, including
-%   IPTG-tuned control
+% Everything in normalized/nondimensionalized units, same forms as the paper, including IPTG-tuned control
+% The system here has bistability and is one of the pTAK plasmids (nominally pTAK117 when using the Fig 5 parameter values)
+%
+% Figure 1 details:
+%   Promoter 1: PLs1con
+%   Repressor 1: cIts lambda repressor -> "v"
+%   Inducer 1: Heat (denatures repressor 1)
+%   Promoter 2: Ptrc-2
+%   Repressor 2: LacI -> "u"
+%   Inducer 2: IPTG (inhibits repressor 2)
+%   Reporter: GFP, measure of amount of Repressor 1 and Promoter 2 activity
+%
 % Reactions:
 %   0 -> u with rate alpha1/(1 + v^beta)
 %   u -> 0 with rate 1
 %   0 -> v with rate alpha2/(1 + u^gamma) or alpha2/(1 + (u/(1+IPTG/K)^eta)^gamma)
 %   v -> 0 with rate 1
+%
 % See Gardner, T. S., Cantor, C. R., & Collins, J. J. (2000). Construction
 %   of a genetic toggle switch in Escherichia coli. Nature, 403(6767), 339–342. http://doi.org/10.1038/35002131 
 clear; close all; clc
@@ -19,9 +30,9 @@ alpha2 = 15.6;
 beta = 2.5;
 gamma = 1;
 eta = 2.0015;
-K = 2.9618e-5;
+K = 2.9618e-5; % (M = molar)
 
-IPTG = 0; % this is also basically a param since it's a constant in any expt
+IPTG = 0; % (M) this is also basically a param since it's a constant in any expt
 
 % Initial conditions - concs
 u0 = 50;
@@ -53,22 +64,20 @@ for iSim = 1:nSims
     hold off
     xlabel('Time')
     ylabel('Counts')
-    title(sprintf('Bistable Competition, Slightly Off Initial Amounts\nODE = thick, SSA = thin lines'))
+    title(sprintf('Bistable Competition\nODE = thick, SSA = thin lines'))
     xlim([0, tf])
     ylim([0, yMax*1.3])
     legend('A','B', 'Location','best')
 end
 
-%% Run sims with exactly matched initial A and B
-% It's hard to see the A and B ODE lines exactly on top of each other
-A0 = 50;
-B0 = 50;
-x0 = [A0, B0];
+%% Run sims with varying induction using IPTG
+IPTGs = [0, 1e-6, 1e-2];
+nIPTGs = length(IPTGs);
 
 [tOde, yOde] = ode15s(@ode_model, [0, tf], x0');
 
-nSims = 3;
-for iSim = 1:nSims
+for iIPTG = 1:nIPTGs
+    IPTG = IPTGs(iIPTG);
     [tSsa, xSsa] = ssa_sim(tf, x0);
     
     % Plot trajectories
@@ -81,9 +90,9 @@ for iSim = 1:nSims
     hold off
     xlabel('Time')
     ylabel('Counts')
-    title(sprintf('Bistable Competition, Equal Initial Amounts\nODE = thick, SSA = thin lines'))
+    title(sprintf('Bistable Competition, IPTG = %g\nODE = thick, SSA = thin lines', IPTG))
     xlim([0, tf])
-    legend('A','B', 'Location','best')
+    legend('u','v', 'Location','best')
 end
 
 % TODO: distributions of results
