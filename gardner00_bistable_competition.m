@@ -201,6 +201,20 @@ h = legend(labels);
 title(h, '[IPTG] (M)')
 title('Distributions of Steady States')
 
+%% Output Figures
+% Including setting proper overall figure size
+hs = findobj('Type', 'figure');
+for i = 1:8
+    fig = hs(i);
+    fig.PaperPositionMode = 'auto';
+    fig_pos = fig.PaperPosition;
+    fig.PaperSize = [fig_pos(3) fig_pos(4)];
+    saveas(fig, sprintf('fig%i.eps',i), 'epsc');
+end
+% for i = 1:8
+%     save2pdf(sprintf('fig%i.pdf',i), i);
+% end
+
 %% End of main function %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %% Begin helper funs
