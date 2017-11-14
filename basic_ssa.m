@@ -119,6 +119,20 @@ title(sprintf('P + L <-> C\nODE and SSA with +/-%i std dev for different volumes
 xlim([0, tf])
 legend('P','L','C','Location','best')
 
+%% Output Figures
+% Including setting proper overall figure size
+hs = findobj('Type', 'figure');
+for i = 1:4
+    fig = hs(i);
+    fig.PaperPositionMode = 'auto';
+    fig_pos = fig.PaperPosition;
+    fig.PaperSize = [fig_pos(3) fig_pos(4)];
+    saveas(fig, sprintf('fig%i.eps',i), 'epsc');
+end
+% for i = 1:4
+%     save2pdf(sprintf('fig%i.pdf',i), i);
+% end
+
 %% Helper functions
     function [ts, xs] = ssa_sim(tf, x0)
         % Gillespie stochastic simulation algorithm
