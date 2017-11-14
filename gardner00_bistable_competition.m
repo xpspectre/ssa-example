@@ -34,8 +34,10 @@ K = 2.9618e-5; % (M = molar)
 
 IPTG = 0; % (M) this is also basically a param since it's a constant in any expt
 
-% Initial conditions - concs
-u0 = 50;
+% Initial conditions
+% u0 = 0;
+% v0 = 0;
+u0 = 50; % start off with something for example
 v0 = 50;
 x0 = [u0, v0];
 
@@ -62,12 +64,12 @@ for iSim = 1:nSims
     ax.ColorOrderIndex = 1;
     stairs(tSsa, xSsa)
     hold off
-    xlabel('Time')
+    xlabel('Time (hr)')
     ylabel('Counts')
     title(sprintf('Bistable Competition\nODE = thick, SSA = thin lines'))
     xlim([0, tf])
     ylim([0, yMax*1.3])
-    legend('A','B', 'Location','best')
+    legend('u', 'v', 'Location','best')
 end
 
 %% Run sims with varying induction using IPTG
@@ -88,15 +90,120 @@ for iIPTG = 1:nIPTGs
     ax.ColorOrderIndex = 1;
     stairs(tSsa, xSsa)
     hold off
-    xlabel('Time')
+    xlabel('Time (br)')
     ylabel('Counts')
     title(sprintf('Bistable Competition, IPTG = %g\nODE = thick, SSA = thin lines', IPTG))
     xlim([0, tf])
-    legend('u','v', 'Location','best')
+    legend('u', 'v', 'Location','best')
 end
 
-% TODO: distributions of results
+%% Make Fig 5a
+% Except instead of data, do multiple runs of the stochastic sim
+% The lines are ODEs
+u0 = 0; % there's nothing initially
+v0 = 0;
+x0 = [u0, v0];
+tf = 17; % (hr) doesn't really make a difference compared to 24 hr
 
+% Do a bunch of ODE sims to make a smooth curve (except at the jump)
+nIPTGs = 50;
+IPTGs = logspace(-6, -2, nIPTGs);
+ssOdeOuts = nan(nIPTGs,1); % the reporter is just repressor 1, v
+for iIPTG = 1:nIPTGs
+    IPTG = IPTGs(iIPTG);
+    [~, yOde] = ode15s(@ode_model, [0, tf], x0');
+    ssOdeOuts(iIPTG) = yOde(end,2);
+end
+
+% Find jump for split plots
+diffs = ssOdeOuts(2:end) - ssOdeOuts(1:end-1);
+jump = find(diffs==max(diffs));
+
+IPTGsLeft = IPTGs(1:jump);
+IPTGsRight = IPTGs(jump+1:end);
+ssOdeLeft = ssOdeOuts(1:jump);
+ssOdeRight = ssOdeOuts(jump+1:end);
+
+% Do a bunch of SSA sims at a few points and get stats
+runSsas = false; % cache since this is expensive
+ssasFile = 'gardner00_ssas_runs_.mat';
+
+nIPTGsSsa = 10;
+IPTGsSsa = logspace(-6, -2, nIPTGsSsa);
+nSims = 100;
+
+if runSsas
+    ssSsaOuts = nan(nIPTGsSsa,nSims);
+    for iIPTG = 1:nIPTGsSsa
+        IPTG = IPTGsSsa(iIPTG);
+        for iSim = 1:nSims
+            [~, xSsa] = ssa_sim(tf, x0);
+            ssSsaOuts(iIPTG,iSim) = xSsa(end,2);
+        end
+    end
+    save(ssasFile, 'ssSsaOuts');
+else
+    loaded = load(ssasFile);
+    ssSsaOuts = loaded.ssSsaOuts;
+end
+
+labels = cell(nIPTGsSsa,1);
+for iIPTG = 1:nIPTGsSsa
+    labels{iIPTG} = sprintf('%.2e', IPTGsSsa(iIPTG));
+end
+
+figure
+boxplot(ssSsaOuts', 'Positions', log10(IPTGsSsa), 'PlotStyle', 'compact', 'Labels', labels) % median, IQR, limits, and outliers
+hold on
+ax = gca;
+ax.ColorOrderIndex = 2; % red
+plot(log10(IPTGsLeft), ssOdeLeft, 'LineWidth', 3)
+ax.ColorOrderIndex = 2;
+plot(log10(IPTGsRight), ssOdeRight, 'LineWidth', 3)
+hold off
+xlabel('[IPTG] (M)')
+ylabel('cIts (counts)')
+title(sprintf('Steady State Behavior\nODE = red line; SSA = blue boxplots'))
+
+%% Distributions of steady state behaviors like Fig 5c
+% Get domain for KDE
+xLims = [0, max(ssSsaOuts(:))];
+xSpan = xLims(2) - xLims(1);
+xFactor = 0.25;
+xLims = [xLims(1) - xFactor*xSpan, xLims(2) + xFactor*xSpan];
+
+nxs = 100;
+xs = linspace(xLims(1), xLims(2), nxs);
+
+% Take a subset of IPTG concs since 10 is too many for the line plots
+keep = 1:2:nIPTGsSsa;
+nIPTGsSsa = length(keep);
+ssSsaOuts = ssSsaOuts(keep,:);
+labels = labels(keep);
+
+fs = nan(nIPTGsSsa,nxs);
+for iIPTG = 1:nIPTGsSsa
+%     [fs(iIPTG,:),~] = ksdensity(ssSsaOuts(iIPTG,:), xs);
+    [fs(iIPTG,:),~] = ksdensity(ssSsaOuts(iIPTG,:), xs, 'Bandwidth', 2); % these aren't actually normally distributed
+end
+
+colors = genColors(nIPTGsSsa);
+
+figure
+hold on
+for iIPTG = 1:nIPTGsSsa
+    plot(xs, fs(iIPTG,:), 'Color', colors(iIPTG,:))
+end
+hold off
+xlabel('cIts (counts)')
+ylabel('Prob')
+h = legend(labels);
+title(h, '[IPTG] (M)')
+title('Distributions of Steady States')
+
+%% End of main function %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% Begin helper funs
     function [ts, xs] = ssa_sim(tf, x0)
         % Gillespie stochastic simulation algorithm
         % States: x1 = u, x2 = v

@@ -1,3 +1,5 @@
+# Temporary cached files for expensive runs
+*_.mat
 
 # Created by https://www.gitignore.io/api/linux,matlab,windows
 
