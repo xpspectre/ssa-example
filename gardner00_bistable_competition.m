@@ -20,7 +20,7 @@ function gardner00_bistable_competition
 %   v -> 0 with rate 1
 %
 % See Gardner, T. S., Cantor, C. R., & Collins, J. J. (2000). Construction
-%   of a genetic toggle switch in Escherichia coli. Nature, 403(6767), 339–342. http://doi.org/10.1038/35002131 
+%   of a genetic toggle switch in Escherichia coli. Nature, 403(6767), 339ï¿½342. http://doi.org/10.1038/35002131 
 clear; close all; clc
 rng('default'); % remove this to get different traces
 
@@ -201,19 +201,131 @@ h = legend(labels);
 title(h, '[IPTG] (M)')
 title('Distributions of Steady States')
 
+%% Sims for phase portrait
+% Modify alpha1 and alpha2 and do sims on each grid point
+%   Do ODE sims to get deterministic behavior for basic plot - color indicates bistability?
+%   Do many SSA sims to get distribution - mark each point by a color and shade?
+% Show 2 regions bistability vs monostability
+%   Bi: when you start at lo and hi, and get lo and hi results
+%   Mono: when you start at lo and hi, and get 1 end behavior
+na1 = 30;
+na2 = 31;
+alpha1s = logspace(log10(alpha1/100), log10(alpha1*100), na1);
+alpha2s = logspace(log10(alpha2/100), log10(alpha2*100), na2);
+IPTG = 0; % no induction - everything determined by starting state
+
+vfs = nan(na1,na2,2); % last dim is [lo,hi]
+opts = odeset('RelTol',1e-8,'AbsTol',1e-12);
+for ia1 = 1:na1
+    alpha1 = alpha1s(ia1);
+    for ia2 = 1:na2
+        alpha2 = alpha2s(ia2);
+        
+        % Common u start
+        u0 = 0;
+        
+        % Lo cIts (v) start
+        v0 = 0;
+        [tOdeLo, yOdeLo] = ode15s(@ode_model, [0, tf], [u0, v0]', opts);
+        vfs(ia1,ia2,1) = yOdeLo(end,2);
+        
+        % Hi cIts (v) start
+        v0 = 100;
+        [tOdeHi, yOdeHi] = ode15s(@ode_model, [0, tf], [u0, v0]', opts);
+        vfs(ia1,ia2,2) = yOdeHi(end,2);
+        
+        % Plot the traces for specified cases
+        % definite bistability
+        if ia1 == na1 && ia2 == na2 % max vals for both - bistable
+            figure
+            plot(tOdeLo, yOdeLo(:,2), 'LineWidth', 2)
+            hold on
+            plot(tOdeHi, yOdeHi(:,2), 'LineWidth', 2)
+            hold off
+            xlabel('Time')
+            ylabel('cIts')
+            legend('Lo cIts Start','Hi cIts Start', 'Location','best')
+            title('Hi \alpha_1, Hi \alpha_2 Traces')
+        end
+        
+        if ia1 == na1 && ia2 == 1 % a corner - monostable
+            figure
+            plot(tOdeLo, yOdeLo(:,2), 'LineWidth', 2)
+            hold on
+            plot(tOdeHi, yOdeHi(:,2), 'LineWidth', 2)
+            hold off
+            xlabel('Time')
+            ylabel('cIts')
+            legend('Lo cIts Start','Hi cIts Start', 'Location','best')
+            title('Hi \alpha_1, Lo \alpha_2 Traces')
+        end
+        
+        if ia1 == 1 && ia2 == na2 % a corner - monostable
+            figure
+            plot(tOdeLo, yOdeLo(:,2), 'LineWidth', 2)
+            hold on
+            plot(tOdeHi, yOdeHi(:,2), 'LineWidth', 2)
+            hold off
+            xlabel('Time')
+            ylabel('cIts')
+            legend('Lo cIts Start','Hi cIts Start', 'Location','best')
+            title('Lo \alpha_1, Hi \alpha_2 Traces')
+        end
+        
+        if ia1 == 1 && ia2 == 1 % min vals for both - bistable?
+            figure
+            plot(tOdeLo, yOdeLo(:,2), 'LineWidth', 2)
+            hold on
+            plot(tOdeHi, yOdeHi(:,2), 'LineWidth', 2)
+            hold off
+            xlabel('Time')
+            ylabel('cIts')
+            legend('Lo cIts Start','Hi cIts Start', 'Location','best')
+            title('Lo \alpha_1, Lo \alpha_2 Traces')
+        end
+    end
+end
+
+% Difference is a measure of bistability: same val means monostable;
+%   "significant" diff means bistable
+diffs = vfs(:,:,2) - vfs(:,:,1);
+
+% Hack in a lower positive threshold for logspace plotting
+eps = 1e-6;
+diffs(diffs<0) = eps;
+
+% Zscale in logscale
+diffs = log10(diffs);
+
+%%
+figure
+surf(alpha2s, alpha1s, diffs)
+view(0,90);
+set(gca, 'XScale', 'log')
+set(gca, 'YScale', 'log')
+% set(gca, 'ZScale', 'log')
+xlabel('\alpha_2')
+ylabel('\alpha_1')
+xlim([min(alpha2s), max(alpha2s)])
+ylim([min(alpha1s), max(alpha1s)])
+shading interp
+h = colorbar;
+ylabel(h, 'log_{10} Final cIts Diff')
+title('Diff in Final cIts Between Starting Hi and Lo')
+
 %% Output Figures
 % Including setting proper overall figure size
-hs = findobj('Type', 'figure');
-for i = 1:8
-    fig = hs(i);
-    fig.PaperPositionMode = 'auto';
-    fig_pos = fig.PaperPosition;
-    fig.PaperSize = [fig_pos(3) fig_pos(4)];
-    saveas(fig, sprintf('fig%i.eps',i), 'epsc');
-end
+% hs = findobj('Type', 'figure');
 % for i = 1:8
-%     save2pdf(sprintf('fig%i.pdf',i), i);
+%     fig = hs(i);
+%     fig.PaperPositionMode = 'auto';
+%     fig_pos = fig.PaperPosition;
+%     fig.PaperSize = [fig_pos(3) fig_pos(4)];
+%     saveas(fig, sprintf('fig%i.eps',i), 'epsc');
 % end
+for i = 1:13
+    save2pdf(sprintf('fig%i.pdf',i), i);
+end
 
 %% End of main function %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
